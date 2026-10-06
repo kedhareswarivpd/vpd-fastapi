@@ -1,0 +1,16 @@
+SITEMAP_ROUTES = [
+    {"path": "/", "priority": "1.0"},
+    {"path": "/about", "priority": "0.8"},
+    {"path": "/services", "priority": "0.9"},
+    {"path": "/solutions", "priority": "0.8"},
+    {"path": "/case-studies", "priority": "0.7"},
+    {"path": "/projects", "priority": "0.7"},
+    {"path": "/careers", "priority": "0.7"},
+    {"path": "/blog", "priority": "0.8"},
+    {"path": "/events", "priority": "0.6"},
+    {"path": "/downloads", "priority": "0.5"},
+    {"path": "/contact", "priority": "0.7"},
+    {"path": "/privacy-policy", "priority": "0.4"},
+    {"path": "/terms-conditions", "priority": "0.4"},
+    {"path": "/cookie-policy", "priority": "0.4"},
+]

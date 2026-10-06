@@ -1,0 +1,31 @@
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+frontend/.env.local
+
+# Backend
+backend/__pycache__/
+backend/**/__pycache__/
+backend/.venv/
+backend/.venv311/
+backend/venv/
+backend/.env*
+!backend/.env.example
+!backend/.env.staging.example
+backend/uploads_private/
+backend/uploads/*
+!backend/uploads/.gitkeep
+backend/logs/*
+!backend/logs/.gitkeep
+backend/.pytest_cache/
+
+# Docker Compose host-port overrides (LOCAL_DB_PORT/BACKEND_PORT/FRONTEND_PORT)
+# — machine-specific, e.g. when this machine's default ports are already taken
+# by another project. Compose auto-loads this file; committed defaults in the
+# compose files themselves stay the conventional 5432/8000/80.
+/.env
+
+# General
+.DS_Store
+*.log

@@ -1,0 +1,44 @@
+services:
+  - type: web
+    name: corefusion-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt && alembic upgrade head
+    startCommand: gunicorn app.main:app -w 2 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:$PORT --timeout 120 --graceful-timeout 60
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11"
+      - key: ENV
+        value: production
+      - key: APP_NAME
+        value: CoreFusion Technologies
+      - key: API_PREFIX
+        value: /api/v1
+      - key: DB_HOST
+        sync: false
+      - key: DB_PORT
+        value: "5432"
+      - key: DB_NAME
+        value: postgres
+      - key: DB_USER
+        value: postgres
+      - key: DB_PASS
+        sync: false
+      - key: DB_USE_PGBOUNCER
+        value: "false"
+      - key: REDIS_HOST
+        value: localhost
+      - key: REDIS_PORT
+        value: "6379"
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: UPLOAD_DIR
+        value: uploads
+      - key: MAX_FILE_SIZE_MB
+        value: "10"
+      - key: RATE_LIMIT
+        value: 300/15minute
+      - key: CLIENT_URL
+        sync: false

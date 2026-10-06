@@ -1,0 +1,29 @@
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+exclude = ["alembic/versions", ".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes (unused imports/vars, undefined names)
+    "I",    # isort (import sorting)
+    "B",    # flake8-bugbear (common bug patterns)
+    "UP",   # pyupgrade (modern Python idioms)
+    "SIM",  # flake8-simplify
+    "C4",   # flake8-comprehensions
+]
+ignore = [
+    "E501",  # line length is enforced by the formatter, not the linter
+    "B008",  # FastAPI's Depends(...)/File(...)/Form(...) as a default arg is the framework's own pattern
+    "UP042", # str+Enum -> StrEnum: real (de facto) enum values are the wire format Pydantic serializes and every schema/frontend already expects (e.g. UserRole.admin == "admin"); StrEnum's f-string/repr behavior differs subtly enough from str,Enum that this needs its own dedicated verification pass across every schema, not a blind mechanical rename — deliberately deferred, not missed
+    "SIM117", # nested `with` blocks: mostly in tests deliberately structured for readability (one patch per line) rather than one dense `with a, b, c:` — a style call, not a bug
+    "C408",   # dict(key=value, ...) vs {"key": value, ...}: used throughout tests for keyword-heavy fixture data where dict(...) reads at least as clearly; not worth a mechanical rewrite across dozens of call sites for a pure style preference
+    "UP046",  # Generic[T] -> PEP 695 type parameter syntax: a real modernization, but changes the class's runtime type-parameter mechanism (relevant to any old-style TypeVar-bound generic tooling downstream) — deferred pending a dedicated check that nothing depends on the current form, not a same-pass mechanical rename
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.ruff.format]
+quote-style = "double"

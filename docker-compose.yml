@@ -1,0 +1,104 @@
+
+# CoreFusion Technologies -- BASE stack definition.
+#
+# This file alone describes the shared shape of every environment: backend +
+# redis + frontend. It intentionally does NOT hardcode a database host/local
+# postgres service, so it works unmodified for staging (Supabase Postgres).
+#
+# - Local development: `docker compose up` with no -f flags. Docker Compose
+#   auto-loads docker-compose.override.yml on top of this file, which adds a
+#   local `postgres` service and points the backend at it. See that file for
+#   details and quick-start commands.
+# - Staging: `docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d`
+#   — points the backend at backend/.env.staging (Supabase Postgres), no
+#   local postgres container involved.
+#
+# Topology:
+#   frontend (nginx, :80) --serves React static build
+#       └── proxies /api/*     -> backend:8000
+#       └── proxies /uploads/* -> backend:8000
+#   backend (FastAPI + gunicorn/uvicorn, :8000) --talks to Postgres (local or Supabase) + redis
+#   redis (:6379) --rate limiting (CF-BE-007) + caching
+
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: docker/Dockerfile
+    container_name: corefusion-backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      REDIS_HOST: redis
+    depends_on:
+      - redis
+    volumes:
+      - ./backend/uploads:/usr/src/app/uploads
+      - ./backend/uploads_private:/usr/src/app/uploads_private
+      - ./backend/logs:/usr/src/app/logs
+      - ./backend/backups:/usr/src/app/backups
+    # CF-BE-014 root cause: glibc's default DNS resolver options (timeout:5
+    # attempts:2 — see /etc/resolv.conf) mean that once the `redis` service
+    # name stops resolving (e.g. Redis container killed/crashed), every
+    # getaddrinfo("redis") call blocks for up to ~10s (2 attempts x 5s) before
+    # raising — measured directly (`python3 -c "socket.getaddrinfo(...)"`
+    # inside this exact container: ~8s cold, ~4s per attempt thereafter,
+    # matching the reported 4-8s request latency during a live outage drill).
+    # This is DNS resolution time, upstream of any redis-py socket_timeout/
+    # socket_connect_timeout — those settings (core/config.py's redis_url)
+    # only govern the TCP connect/read phase *after* a hostname has already
+    # resolved, which is why tuning them produced no measurable improvement
+    # in the original drill. Cutting the resolver's own timeout is the fix.
+    dns_opt:
+      - timeout:1
+      - attempts:1
+    ports:
+      # Host port is configurable (BACKEND_PORT) for machines where 8000 is
+      # already taken by another project; committed default stays 8000.
+      - '${BACKEND_PORT:-8000}:8000' # direct access for API testing/Swagger docs; safe to remove in production if only the frontend proxy should be reachable
+    networks:
+      - corefusion-net
+    # SONAR M2: without a cap, a runaway process in this container (e.g. a
+    # pg_dump-backed backup request, or a leak in a long-lived worker) can
+    # consume all host memory/CPU and take down every other container on the
+    # same host. mem_limit/cpus (Compose v2 top-level keys, honored by
+    # `docker compose up` without requiring swarm mode) bound the blast
+    # radius; tune upward if gunicorn worker count or traffic grows.
+    mem_limit: 1g
+    cpus: 1.5
+
+  redis:
+    image: redis:7-alpine
+    container_name: corefusion-redis
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - corefusion-net
+    mem_limit: 256m
+    cpus: 0.5
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: docker/Dockerfile
+    container_name: corefusion-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      # Host port is configurable (FRONTEND_PORT) for machines where 80 is
+      # already taken by another project; committed default stays 80.
+      - '${FRONTEND_PORT:-80}:80'
+    networks:
+      - corefusion-net
+    mem_limit: 128m
+    cpus: 0.5
+
+networks:
+  corefusion-net:
+    driver: bridge
+
+volumes:
+  redis_data:

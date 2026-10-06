@@ -1,0 +1,18 @@
+
+# STAGING override — apply explicitly on top of docker-compose.yml (Compose
+# does NOT auto-load this one, unlike docker-compose.override.yml):
+#   docker compose -f docker-compose.yml -f docker-compose.staging.yml up -d
+#
+# No local `postgres` service here — the backend connects directly to the
+# Supabase project's own Postgres, configured entirely by
+# backend/.env.staging (DB_HOST is Supabase's pooler host, DB_USE_PGBOUNCER=true).
+# Redis stays local — rate limiting/caching don't need to be Supabase-hosted,
+# only the application database moves to Supabase.
+#
+# Run migrations against staging explicitly BEFORE deploying a new image —
+# see backend/scripts/migrate.sh staging.
+
+services:
+  backend:
+    env_file:
+      - ./backend/.env.staging

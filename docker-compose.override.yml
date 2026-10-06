@@ -1,0 +1,104 @@
+
+# LOCAL DEVELOPMENT overrides — auto-loaded by `docker compose up` alongside
+# docker-compose.yml (no -f flag needed; this is Compose's standard override
+# filename). Adds a local Postgres container and a local MinIO container
+# (S3-compatible object storage) and points the backend at both. Auth is
+# fully CoreFusion-owned (backend/app/services/auth_service.py) — there is no
+# external identity provider to separately configure here. Email (Brevo) and
+# staging's Upstash Redis / Supabase Storage are real external services
+# configured entirely via backend/.env / backend/.env.staging — nothing to
+# add here for those.
+#
+# Quick start:
+#   docker compose up -d postgres redis minio
+#   docker compose run --rm backend alembic upgrade head   # first-time schema setup
+#   docker compose up -d backend frontend
+#
+# To explicitly run the local-only stack (equivalent to the implicit default):
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml up -d
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: corefusion-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${LOCAL_DB_NAME:-corefusion}
+      POSTGRES_USER: ${LOCAL_DB_USER:-corefusion}
+      POSTGRES_PASSWORD: ${LOCAL_DB_PASSWORD:-corefusion_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      # Host port is configurable (LOCAL_DB_PORT) in case 5432 is already
+      # taken by another local Postgres — exposed so `alembic upgrade head` /
+      # psql can also be run from the host, not just in-container.
+      - '${LOCAL_DB_PORT:-5432}:5432'
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${LOCAL_DB_USER:-corefusion} -d ${LOCAL_DB_NAME:-corefusion}']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - corefusion-net
+    mem_limit: 1g
+    cpus: 1.0
+
+  minio:
+    image: minio/minio:latest
+    container_name: corefusion-minio
+    restart: unless-stopped
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    command: server /data --console-address ":9001"
+    ports:
+      # 9000 = S3 API (what the backend talks to) stays reachable from
+      # anywhere on the host's network since the backend may run outside
+      # this compose network too. 9001 is MinIO's own admin web console —
+      # SONAR L5: bound to loopback only by default (127.0.0.1) since it's a
+      # full admin UI with no purpose being reachable from other machines on
+      # the network; override MINIO_CONSOLE_BIND if you need it reachable
+      # elsewhere (e.g. '0.0.0.0' on a trusted internal network).
+      - '${MINIO_PORT:-9000}:9000'
+      - '${MINIO_CONSOLE_BIND:-127.0.0.1}:${MINIO_CONSOLE_PORT:-9001}:9001'
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ['CMD', 'curl', '-f', 'http://localhost:9000/minio/health/live']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - corefusion-net
+    mem_limit: 512m
+    cpus: 0.5
+
+  backend:
+    environment:
+      # Override backend/.env's values so the containerized backend reaches
+      # its sibling containers by Docker service name — .env's own
+      # DB_HOST/REDIS_HOST/S3_ENDPOINT_URL (localhost + mapped ports) are for
+      # running the backend directly on the host instead
+      # (`uvicorn app.main:app`). S3_PUBLIC_URL_BASE is deliberately NOT
+      # overridden here — it's handed to browsers/clients outside this
+      # Docker network, which must still reach MinIO via localhost:9000.
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_NAME: ${LOCAL_DB_NAME:-corefusion}
+      DB_USER: ${LOCAL_DB_USER:-corefusion}
+      DB_PASS: ${LOCAL_DB_PASSWORD:-corefusion_dev_password}
+      DB_USE_PGBOUNCER: 'false'
+      S3_ENDPOINT_URL: http://minio:9000
+      S3_ACCESS_KEY_ID: ${MINIO_ROOT_USER:-minioadmin}
+      S3_SECRET_ACCESS_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin123}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      minio:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  minio_data:
